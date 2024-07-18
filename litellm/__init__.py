@@ -16,7 +16,7 @@ from litellm._logging import (
     log_level,
 )
 
-
+from litellm.types.guardrails import GuardrailItem
 from litellm.proxy._types import (
     KeyManagementSystem,
     KeyManagementSettings,
@@ -38,7 +38,7 @@ success_callback: List[Union[str, Callable]] = []
 failure_callback: List[Union[str, Callable]] = []
 service_callback: List[Union[str, Callable]] = []
 _custom_logger_compatible_callbacks_literal = Literal[
-    "lago", "openmeter", "logfire", "dynamic_rate_limiter"
+    "lago", "openmeter", "logfire", "dynamic_rate_limiter", "langsmith", "galileo"
 ]
 callbacks: List[Union[Callable, _custom_logger_compatible_callbacks_literal]] = []
 _langfuse_default_tags: Optional[
@@ -113,6 +113,7 @@ ssl_verify: bool = True
 ssl_certificate: Optional[str] = None
 disable_streaming_logging: bool = False
 in_memory_llm_clients_cache: dict = {}
+safe_memory_mode: bool = False
 ### DEFAULT AZURE API VERSION ###
 AZURE_DEFAULT_API_VERSION = "2024-02-01"  # this is updated to the latest
 ### GUARDRAILS ###
@@ -124,6 +125,7 @@ llamaguard_unsafe_content_categories: Optional[str] = None
 blocked_user_list: Optional[Union[str, List]] = None
 banned_keywords_list: Optional[Union[str, List]] = None
 llm_guard_mode: Literal["all", "key-specific", "request-specific"] = "all"
+guardrail_name_config_map: Dict[str, GuardrailItem] = {}
 ##################
 ### PREVIEW FEATURES ###
 enable_preview_features: bool = False
@@ -334,6 +336,7 @@ cohere_models: List = []
 cohere_chat_models: List = []
 mistral_chat_models: List = []
 anthropic_models: List = []
+empower_models: List = []
 openrouter_models: List = []
 vertex_language_models: List = []
 vertex_vision_models: List = []
@@ -364,6 +367,8 @@ for key, value in model_cost.items():
         mistral_chat_models.append(key)
     elif value.get("litellm_provider") == "anthropic":
         anthropic_models.append(key)
+    elif value.get("litellm_provider") == "empower":
+        empower_models.append(key)
     elif value.get("litellm_provider") == "openrouter":
         openrouter_models.append(key)
     elif value.get("litellm_provider") == "vertex_ai-text-models":
@@ -411,6 +416,7 @@ openai_compatible_endpoints: List = [
     "https://integrate.api.nvidia.com/v1",
     "api.deepseek.com/v1",
     "api.together.xyz/v1",
+    "app.empower.dev/api/v1",
     "inference.friendli.ai/v1",
 ]
 
@@ -428,6 +434,7 @@ openai_compatible_providers: List = [
     "xinference",
     "together_ai",
     "fireworks_ai",
+    "empower",
     "friendliai",
     "azure_ai",
 ]
@@ -530,6 +537,10 @@ huggingface_models: List = [
     "meta-llama/Llama-2-70b",
     "meta-llama/Llama-2-70b-chat",
 ]  # these have been tested on extensively. But by default all text2text-generation and text-generation models are supported by liteLLM. - https://docs.litellm.ai/docs/providers
+empower_models = [
+    "empower/empower-functions",
+    "empower/empower-functions-small",
+]
 
 together_ai_models: List = [
     # llama llms - chat
@@ -665,6 +676,7 @@ provider_list: List = [
     "triton",
     "predibase",
     "databricks",
+    "empower",
     "custom",  # custom apis
 ]
 
@@ -745,6 +757,7 @@ openai_image_generation_models = ["dall-e-2", "dall-e-3"]
 from .timeout import timeout
 from .cost_calculator import completion_cost
 from litellm.litellm_core_utils.litellm_logging import Logging
+from litellm.litellm_core_utils.core_helpers import remove_index_from_tool_calls
 from litellm.litellm_core_utils.token_counter import get_modified_max_tokens
 from .utils import (
     client,
@@ -779,6 +792,7 @@ from .utils import (
     get_api_base,
     get_first_chars_messages,
     ModelResponse,
+    EmbeddingResponse,
     ImageResponse,
     get_provider_fields,
 )
@@ -829,6 +843,7 @@ from .llms.openai import (
     MistralConfig,
     MistralEmbeddingConfig,
     DeepInfraConfig,
+    GroqConfig,
     AzureAIStudioConfig,
 )
 from .llms.nvidia_nim import NvidiaNimConfig
@@ -862,11 +877,18 @@ from .exceptions import (
     InternalServerError,
     JSONSchemaValidationError,
     LITELLM_EXCEPTION_TYPES,
+    MockException,
 )
 from .budget_manager import BudgetManager
 from .proxy.proxy_cli import run_server
 from .router import Router
 from .assistants.main import *
 from .batches.main import *
+from .files.main import *
 from .scheduler import *
 from .cost_calculator import response_cost_calculator, cost_per_token
+
+### ADAPTERS ###
+from .types.adapter import AdapterItem
+
+adapters: List[AdapterItem] = []

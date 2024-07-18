@@ -14,6 +14,7 @@ def initialize_callbacks_on_proxy(
     premium_user: bool,
     config_file_path: str,
     litellm_settings: dict,
+    callback_specific_params: dict = {},
 ):
     from litellm.proxy.proxy_server import prisma_client
 
@@ -25,7 +26,6 @@ def initialize_callbacks_on_proxy(
         known_compatible_callbacks = list(
             get_args(litellm._custom_logger_compatible_callbacks_literal)
         )
-
         for callback in value:  # ["presidio", <my-custom-callback>]
             if isinstance(callback, str) and callback in known_compatible_callbacks:
                 imported_list.append(callback)
@@ -35,6 +35,10 @@ def initialize_callbacks_on_proxy(
 
                 open_telemetry_logger = OpenTelemetry()
 
+                # Add Otel as a service callback
+                if "otel" not in litellm.service_callback:
+                    litellm.service_callback.append("otel")
+
                 imported_list.append(open_telemetry_logger)
                 setattr(proxy_server, "open_telemetry_logger", open_telemetry_logger)
             elif isinstance(callback, str) and callback == "presidio":
@@ -42,7 +46,19 @@ def initialize_callbacks_on_proxy(
                     _OPTIONAL_PresidioPIIMasking,
                 )
 
-                pii_masking_object = _OPTIONAL_PresidioPIIMasking()
+                presidio_logging_only: Optional[bool] = litellm_settings.get(
+                    "presidio_logging_only", None
+                )
+                if presidio_logging_only is not None:
+                    presidio_logging_only = bool(
+                        presidio_logging_only
+                    )  # validate boolean given
+
+                params = {
+                    "logging_only": presidio_logging_only,
+                    **callback_specific_params,
+                }
+                pii_masking_object = _OPTIONAL_PresidioPIIMasking(**params)
                 imported_list.append(pii_masking_object)
             elif isinstance(callback, str) and callback == "llamaguard_moderations":
                 from enterprise.enterprise_hooks.llama_guard import (

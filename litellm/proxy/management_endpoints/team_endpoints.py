@@ -1,32 +1,35 @@
-from typing import Optional, List
-import fastapi
-from fastapi import Depends, Request, APIRouter, Header, status
-from fastapi import HTTPException
+import asyncio
 import copy
 import json
+import traceback
 import uuid
-import litellm
-import asyncio
 from datetime import datetime, timedelta, timezone
+from typing import List, Optional
+
+import fastapi
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+
+import litellm
 from litellm._logging import verbose_proxy_logger
-from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 from litellm.proxy._types import (
-    UserAPIKeyAuth,
-    LiteLLM_TeamTable,
-    LiteLLM_ModelTable,
-    LitellmUserRoles,
-    NewTeamRequest,
-    TeamMemberAddRequest,
-    UpdateTeamRequest,
     BlockTeamRequest,
-    DeleteTeamRequest,
-    Member,
-    LitellmTableNames,
-    LiteLLM_AuditLogs,
-    TeamMemberDeleteRequest,
-    ProxyException,
     CommonProxyErrors,
+    DeleteTeamRequest,
+    LiteLLM_AuditLogs,
+    LiteLLM_ModelTable,
+    LiteLLM_TeamTable,
+    LitellmTableNames,
+    LitellmUserRoles,
+    Member,
+    NewTeamRequest,
+    ProxyErrorTypes,
+    ProxyException,
+    TeamMemberAddRequest,
+    TeamMemberDeleteRequest,
+    UpdateTeamRequest,
+    UserAPIKeyAuth,
 )
+from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 from litellm.proxy.management_helpers.utils import (
     add_new_member,
     management_endpoint_wrapper,
@@ -109,10 +112,10 @@ async def new_team(
     ```
     """
     from litellm.proxy.proxy_server import (
-        prisma_client,
-        litellm_proxy_admin_name,
-        create_audit_log_for_update,
         _duration_in_seconds,
+        create_audit_log_for_update,
+        litellm_proxy_admin_name,
+        prisma_client,
     )
 
     if prisma_client is None:
@@ -326,10 +329,10 @@ async def update_team(
     ```
     """
     from litellm.proxy.proxy_server import (
-        prisma_client,
-        litellm_proxy_admin_name,
-        create_audit_log_for_update,
         _duration_in_seconds,
+        create_audit_log_for_update,
+        litellm_proxy_admin_name,
+        prisma_client,
     )
 
     if prisma_client is None:
@@ -420,10 +423,10 @@ async def team_member_add(
     ```
     """
     from litellm.proxy.proxy_server import (
-        prisma_client,
-        litellm_proxy_admin_name,
-        create_audit_log_for_update,
         _duration_in_seconds,
+        create_audit_log_for_update,
+        litellm_proxy_admin_name,
+        prisma_client,
     )
 
     if prisma_client is None:
@@ -525,10 +528,10 @@ async def team_member_delete(
     ```
     """
     from litellm.proxy.proxy_server import (
-        prisma_client,
-        litellm_proxy_admin_name,
-        create_audit_log_for_update,
         _duration_in_seconds,
+        create_audit_log_for_update,
+        litellm_proxy_admin_name,
+        prisma_client,
     )
 
     if prisma_client is None:
@@ -639,10 +642,10 @@ async def delete_team(
     ```
     """
     from litellm.proxy.proxy_server import (
-        prisma_client,
-        litellm_proxy_admin_name,
-        create_audit_log_for_update,
         _duration_in_seconds,
+        create_audit_log_for_update,
+        litellm_proxy_admin_name,
+        prisma_client,
     )
 
     if prisma_client is None:
@@ -711,6 +714,7 @@ async def team_info(
     team_id: str = fastapi.Query(
         default=None, description="Team ID in the request parameters"
     ),
+    user_api_key_dict: UserAPIKeyAuth = Depends(user_api_key_auth),
 ):
     """
     get info on team + related keys
@@ -725,10 +729,10 @@ async def team_info(
     ```
     """
     from litellm.proxy.proxy_server import (
-        prisma_client,
-        litellm_proxy_admin_name,
-        create_audit_log_for_update,
         _duration_in_seconds,
+        create_audit_log_for_update,
+        litellm_proxy_admin_name,
+        prisma_client,
     )
 
     try:
@@ -743,6 +747,18 @@ async def team_info(
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail={"message": "Malformed request. No team id passed in."},
+            )
+
+        if user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN.value:
+            pass
+        elif user_api_key_dict.team_id is None or (
+            team_id != user_api_key_dict.team_id
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="key not allowed to access this team's info. Key team_id={}, Requested team_id={}".format(
+                    user_api_key_dict.team_id, team_id
+                ),
             )
 
         team_info = await prisma_client.get_data(
@@ -780,10 +796,15 @@ async def team_info(
         return {"team_id": team_id, "team_info": team_info, "keys": keys}
 
     except Exception as e:
+        verbose_proxy_logger.error(
+            "litellm.proxy.management_endpoints.team_endpoints.py::team_info - Exception occurred - {}\n{}".format(
+                e, traceback.format_exc()
+            )
+        )
         if isinstance(e, HTTPException):
             raise ProxyException(
                 message=getattr(e, "detail", f"Authentication Error({str(e)})"),
-                type="auth_error",
+                type=ProxyErrorTypes.auth_error,
                 param=getattr(e, "param", "None"),
                 code=getattr(e, "status_code", status.HTTP_400_BAD_REQUEST),
             )
@@ -791,7 +812,7 @@ async def team_info(
             raise e
         raise ProxyException(
             message="Authentication Error, " + str(e),
-            type="auth_error",
+            type=ProxyErrorTypes.auth_error,
             param=getattr(e, "param", "None"),
             code=status.HTTP_400_BAD_REQUEST,
         )
@@ -810,10 +831,10 @@ async def block_team(
     Blocks all calls from keys with this team id.
     """
     from litellm.proxy.proxy_server import (
-        prisma_client,
-        litellm_proxy_admin_name,
-        create_audit_log_for_update,
         _duration_in_seconds,
+        create_audit_log_for_update,
+        litellm_proxy_admin_name,
+        prisma_client,
     )
 
     if prisma_client is None:
@@ -839,10 +860,10 @@ async def unblock_team(
     Blocks all calls from keys with this team id.
     """
     from litellm.proxy.proxy_server import (
-        prisma_client,
-        litellm_proxy_admin_name,
-        create_audit_log_for_update,
         _duration_in_seconds,
+        create_audit_log_for_update,
+        litellm_proxy_admin_name,
+        prisma_client,
     )
 
     if prisma_client is None:
@@ -872,10 +893,10 @@ async def list_team(
     ```
     """
     from litellm.proxy.proxy_server import (
-        prisma_client,
-        litellm_proxy_admin_name,
-        create_audit_log_for_update,
         _duration_in_seconds,
+        create_audit_log_for_update,
+        litellm_proxy_admin_name,
+        prisma_client,
     )
 
     if user_api_key_dict.user_role != LitellmUserRoles.PROXY_ADMIN:

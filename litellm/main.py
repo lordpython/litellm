@@ -38,6 +38,7 @@ import dotenv
 import httpx
 import openai
 import tiktoken
+from pydantic import BaseModel
 from typing_extensions import overload
 
 import litellm
@@ -48,6 +49,7 @@ from litellm import (  # type: ignore
     get_litellm_params,
     get_optional_params,
 )
+from litellm.integrations.custom_logger import CustomLogger
 from litellm.litellm_core_utils.litellm_logging import Logging as LiteLLMLoggingObj
 from litellm.utils import (
     CustomStreamWrapper,
@@ -61,6 +63,7 @@ from litellm.utils import (
     get_llm_provider,
     get_optional_params_embeddings,
     get_optional_params_image_gen,
+    get_optional_params_transcription,
     get_secret,
     mock_completion_streaming_obj,
     read_config_args,
@@ -244,6 +247,7 @@ async def acompletion(
     seed: Optional[int] = None,
     tools: Optional[List] = None,
     tool_choice: Optional[str] = None,
+    parallel_tool_calls: Optional[bool] = None,
     logprobs: Optional[bool] = None,
     top_logprobs: Optional[int] = None,
     deployment_id=None,
@@ -319,6 +323,7 @@ async def acompletion(
         "seed": seed,
         "tools": tools,
         "tool_choice": tool_choice,
+        "parallel_tool_calls": parallel_tool_calls,
         "logprobs": logprobs,
         "top_logprobs": top_logprobs,
         "deployment_id": deployment_id,
@@ -474,7 +479,7 @@ def mock_completion(
         if isinstance(mock_response, Exception):
             if isinstance(mock_response, openai.APIError):
                 raise mock_response
-            raise litellm.APIError(
+            raise litellm.MockException(
                 status_code=getattr(mock_response, "status_code", 500),  # type: ignore
                 message=getattr(mock_response, "text", str(mock_response)),
                 llm_provider=getattr(mock_response, "llm_provider", custom_llm_provider or "openai"),  # type: ignore
@@ -517,7 +522,7 @@ def mock_completion(
             )
             return response
         if n is None:
-            model_response["choices"][0]["message"]["content"] = mock_response
+            model_response.choices[0].message.content = mock_response  # type: ignore
         else:
             _all_choices = []
             for i in range(n):
@@ -528,12 +533,12 @@ def mock_completion(
                     ),
                 )
                 _all_choices.append(_choice)
-            model_response["choices"] = _all_choices
-        model_response["created"] = int(time.time())
-        model_response["model"] = model
+            model_response.choices = _all_choices  # type: ignore
+        model_response.created = int(time.time())
+        model_response.model = model
 
         if mock_tool_calls:
-            model_response["choices"][0]["message"]["tool_calls"] = [
+            model_response.choices[0].message.tool_calls = [  # type: ignore
                 ChatCompletionMessageToolCall(**tool_call)
                 for tool_call in mock_tool_calls
             ]
@@ -1929,51 +1934,7 @@ def completion(
             """
             Deprecated. We now do together ai calls via the openai client - https://docs.together.ai/docs/openai-api-compatibility
             """
-            custom_llm_provider = "together_ai"
-            together_ai_key = (
-                api_key
-                or litellm.togetherai_api_key
-                or get_secret("TOGETHER_AI_TOKEN")
-                or get_secret("TOGETHERAI_API_KEY")
-                or litellm.api_key
-            )
-
-            api_base = (
-                api_base
-                or litellm.api_base
-                or get_secret("TOGETHERAI_API_BASE")
-                or "https://api.together.xyz/inference"
-            )
-
-            custom_prompt_dict = custom_prompt_dict or litellm.custom_prompt_dict
-
-            model_response = together_ai.completion(
-                model=model,
-                messages=messages,
-                api_base=api_base,
-                model_response=model_response,
-                print_verbose=print_verbose,
-                optional_params=optional_params,
-                litellm_params=litellm_params,
-                logger_fn=logger_fn,
-                encoding=encoding,
-                api_key=together_ai_key,
-                logging_obj=logging,
-                custom_prompt_dict=custom_prompt_dict,
-            )
-            if (
-                "stream_tokens" in optional_params
-                and optional_params["stream_tokens"] == True
-            ):
-                # don't try to access stream object,
-                response = CustomStreamWrapper(
-                    model_response,
-                    model,
-                    custom_llm_provider="together_ai",
-                    logging_obj=logging,
-                )
-                return response
-            response = model_response
+            pass
         elif custom_llm_provider == "palm":
             palm_api_key = api_key or get_secret("PALM_API_KEY") or litellm.api_key
 
@@ -2456,10 +2417,10 @@ def completion(
 
             ## LOGGING
             generator = ollama.get_ollama_response(
-                api_base,
-                model,
-                prompt,
-                optional_params,
+                api_base=api_base,
+                model=model,
+                prompt=prompt,
+                optional_params=optional_params,
                 logging_obj=logging,
                 acompletion=acompletion,
                 model_response=model_response,
@@ -2485,11 +2446,11 @@ def completion(
             )
             ## LOGGING
             generator = ollama_chat.get_ollama_response(
-                api_base,
-                api_key,
-                model,
-                messages,
-                optional_params,
+                api_base=api_base,
+                api_key=api_key,
+                model=model,
+                messages=messages,
+                optional_params=optional_params,
                 logging_obj=logging,
                 acompletion=acompletion,
                 model_response=model_response,
@@ -2667,9 +2628,9 @@ def completion(
             """
             string_response = response_json["data"][0]["output"][0]
             ## RESPONSE OBJECT
-            model_response["choices"][0]["message"]["content"] = string_response
-            model_response["created"] = int(time.time())
-            model_response["model"] = model
+            model_response.choices[0].message.content = string_response  # type: ignore
+            model_response.created = int(time.time())
+            model_response.model = model
             response = model_response
         else:
             raise ValueError(
@@ -3460,7 +3421,7 @@ def embedding(
                 or api_base
                 or get_secret("OLLAMA_API_BASE")
                 or "http://localhost:11434"
-            )
+            )  # type: ignore
             if isinstance(input, str):
                 input = [input]
             if not all(isinstance(item, str) for item in input):
@@ -3470,9 +3431,11 @@ def embedding(
                     llm_provider="ollama",  # type: ignore
                 )
             ollama_embeddings_fn = (
-                ollama.ollama_aembeddings if aembedding else ollama.ollama_embeddings
+                ollama.ollama_aembeddings
+                if aembedding is True
+                else ollama.ollama_embeddings
             )
-            response = ollama_embeddings_fn(
+            response = ollama_embeddings_fn(  # type: ignore
                 api_base=api_base,
                 model=model,
                 prompts=input,
@@ -3940,6 +3903,63 @@ def text_completion(
     return text_completion_response
 
 
+###### Adapter Completion ################
+
+
+async def aadapter_completion(*, adapter_id: str, **kwargs) -> Optional[BaseModel]:
+    """
+    Implemented to handle async calls for adapter_completion()
+    """
+    try:
+        translation_obj: Optional[CustomLogger] = None
+        for item in litellm.adapters:
+            if item["id"] == adapter_id:
+                translation_obj = item["adapter"]
+
+        if translation_obj is None:
+            raise ValueError(
+                "No matching adapter given. Received 'adapter_id'={}, litellm.adapters={}".format(
+                    adapter_id, litellm.adapters
+                )
+            )
+
+        new_kwargs = translation_obj.translate_completion_input_params(kwargs=kwargs)
+
+        response: ModelResponse = await acompletion(**new_kwargs)  # type: ignore
+
+        translated_response = translation_obj.translate_completion_output_params(
+            response=response
+        )
+
+        return translated_response
+    except Exception as e:
+        raise e
+
+
+def adapter_completion(*, adapter_id: str, **kwargs) -> Optional[BaseModel]:
+    translation_obj: Optional[CustomLogger] = None
+    for item in litellm.adapters:
+        if item["id"] == adapter_id:
+            translation_obj = item["adapter"]
+
+    if translation_obj is None:
+        raise ValueError(
+            "No matching adapter given. Received 'adapter_id'={}, litellm.adapters={}".format(
+                adapter_id, litellm.adapters
+            )
+        )
+
+    new_kwargs = translation_obj.translate_completion_input_params(kwargs=kwargs)
+
+    response: ModelResponse = completion(**new_kwargs)  # type: ignore
+
+    translated_response = translation_obj.translate_completion_output_params(
+        response=response
+    )
+
+    return translated_response
+
+
 ##### Moderation #######################
 
 
@@ -4260,6 +4280,7 @@ def image_generation(
                 model_response=model_response,
                 vertex_project=vertex_ai_project,
                 vertex_location=vertex_ai_location,
+                vertex_credentials=vertex_credentials,
                 aimg_generation=aimg_generation,
             )
 
@@ -4279,7 +4300,7 @@ def image_generation(
 
 
 @client
-async def atranscription(*args, **kwargs):
+async def atranscription(*args, **kwargs) -> TranscriptionResponse:
     """
     Calls openai + azure whisper endpoints.
 
@@ -4304,9 +4325,9 @@ async def atranscription(*args, **kwargs):
 
         # Await normally
         init_response = await loop.run_in_executor(None, func_with_context)
-        if isinstance(init_response, dict) or isinstance(
-            init_response, TranscriptionResponse
-        ):  ## CACHING SCENARIO
+        if isinstance(init_response, dict):
+            response = TranscriptionResponse(**init_response)
+        elif isinstance(init_response, TranscriptionResponse):  ## CACHING SCENARIO
             response = init_response
         elif asyncio.iscoroutine(init_response):
             response = await init_response
@@ -4346,7 +4367,7 @@ def transcription(
     litellm_logging_obj: Optional[LiteLLMLoggingObj] = None,
     custom_llm_provider=None,
     **kwargs,
-):
+) -> TranscriptionResponse:
     """
     Calls openai + azure whisper endpoints.
 
@@ -4358,6 +4379,7 @@ def transcription(
     proxy_server_request = kwargs.get("proxy_server_request", None)
     model_info = kwargs.get("model_info", None)
     metadata = kwargs.get("metadata", {})
+    drop_params = kwargs.get("drop_params", None)
     client: Optional[
         Union[
             openai.AsyncOpenAI,
@@ -4379,12 +4401,22 @@ def transcription(
 
     if dynamic_api_key is not None:
         api_key = dynamic_api_key
-    optional_params = {
-        "language": language,
-        "prompt": prompt,
-        "response_format": response_format,
-        "temperature": None,  # openai defaults this to 0
-    }
+
+    optional_params = get_optional_params_transcription(
+        model=model,
+        language=language,
+        prompt=prompt,
+        response_format=response_format,
+        temperature=temperature,
+        custom_llm_provider=custom_llm_provider,
+        drop_params=drop_params,
+    )
+    # optional_params = {
+    #     "language": language,
+    #     "prompt": prompt,
+    #     "response_format": response_format,
+    #     "temperature": None,  # openai defaults this to 0
+    # }
 
     if custom_llm_provider == "azure":
         # azure configs

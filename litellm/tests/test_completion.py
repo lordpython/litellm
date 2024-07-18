@@ -46,7 +46,7 @@ def reset_callbacks():
 @pytest.mark.skip(reason="Local test")
 def test_response_model_none():
     """
-    Addresses: https://github.com/BerriAI/litellm/issues/2972
+    Addresses:https://github.com/BerriAI/litellm/issues/2972
     """
     x = completion(
         model="mymodel",
@@ -279,6 +279,35 @@ def test_completion_claude():
 
 
 # test_completion_claude()
+
+
+@pytest.mark.skip(reason="No empower api key")
+def test_completion_empower():
+    litellm.set_verbose = True
+    messages = [
+        {
+            "role": "user",
+            "content": "\nWhat is the query for `console.log` => `console.error`\n",
+        },
+        {
+            "role": "assistant",
+            "content": "\nThis is the GritQL query for the given before/after examples:\n<gritql>\n`console.log` => `console.error`\n</gritql>\n",
+        },
+        {
+            "role": "user",
+            "content": "\nWhat is the query for `console.info` => `consdole.heaven`\n",
+        },
+    ]
+    try:
+        # test without max tokens
+        response = completion(
+            model="empower/empower-functions-small",
+            messages=messages,
+        )
+        # Add any assertions, here to check response args
+        print(response)
+    except Exception as e:
+        pytest.fail(f"Error occurred: {e}")
 
 
 def test_completion_claude_3_empty_response():
@@ -1317,6 +1346,26 @@ def test_completion_fireworks_ai():
         print(response)
     except Exception as e:
         pytest.fail(f"Error occurred: {e}")
+
+
+def test_completion_fireworks_ai_bad_api_base():
+    try:
+        litellm.set_verbose = True
+        messages = [
+            {"role": "system", "content": "You're a good bot"},
+            {
+                "role": "user",
+                "content": "Hey",
+            },
+        ]
+        response = completion(
+            model="fireworks_ai/accounts/fireworks/models/mixtral-8x7b-instruct",
+            messages=messages,
+            api_base="my-bad-api-base",
+        )
+        pytest.fail(f"This call should have failed!")
+    except Exception as e:
+        pass
 
 
 @pytest.mark.skip(reason="this test is flaky")
@@ -2821,7 +2870,7 @@ def test_completion_together_ai_mixtral():
 
 def test_completion_together_ai_yi_chat():
     litellm.set_verbose = True
-    model_name = "together_ai/zero-one-ai/Yi-34B-Chat"
+    model_name = "together_ai/mistralai/Mistral-7B-Instruct-v0.1"
     try:
         messages = [
             {"role": "user", "content": "What llm are you?"},
@@ -3036,32 +3085,38 @@ def response_format_tests(response: litellm.ModelResponse):
 @pytest.mark.asyncio
 async def test_completion_bedrock_httpx_models(sync_mode, model):
     litellm.set_verbose = True
+    try:
 
-    if sync_mode:
-        response = completion(
-            model=model,
-            messages=[{"role": "user", "content": "Hey! how's it going?"}],
-            temperature=0.2,
-            max_tokens=200,
-        )
+        if sync_mode:
+            response = completion(
+                model=model,
+                messages=[{"role": "user", "content": "Hey! how's it going?"}],
+                temperature=0.2,
+                max_tokens=200,
+            )
 
-        assert isinstance(response, litellm.ModelResponse)
+            assert isinstance(response, litellm.ModelResponse)
 
-        response_format_tests(response=response)
-    else:
-        response = await litellm.acompletion(
-            model=model,
-            messages=[{"role": "user", "content": "Hey! how's it going?"}],
-            temperature=0.2,
-            max_tokens=100,
-        )
+            response_format_tests(response=response)
+        else:
+            response = await litellm.acompletion(
+                model=model,
+                messages=[{"role": "user", "content": "Hey! how's it going?"}],
+                temperature=0.2,
+                max_tokens=100,
+            )
 
-        assert isinstance(response, litellm.ModelResponse)
+            assert isinstance(response, litellm.ModelResponse)
+
+            print(f"response: {response}")
+            response_format_tests(response=response)
 
         print(f"response: {response}")
-        response_format_tests(response=response)
-
-    print(f"response: {response}")
+    except litellm.RateLimitError as e:
+        print("got rate limit error=", e)
+        pass
+    except Exception as e:
+        pytest.fail(f"An error occurred - {str(e)}")
 
 
 def test_completion_bedrock_titan_null_response():
@@ -3230,7 +3285,9 @@ def test_completion_anthropic_hanging():
         {"role": "function", "name": "get_capital", "content": "Kokoko"},
     ]
 
-    converted_messages = anthropic_messages_pt(messages)
+    converted_messages = anthropic_messages_pt(
+        messages, model="claude-3-sonnet-20240229", llm_provider="anthropic"
+    )
 
     print(f"converted_messages: {converted_messages}")
 

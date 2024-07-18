@@ -18,7 +18,10 @@ Features:
     - ✅ [JWT-Auth](../docs/proxy/token_auth.md)
     - ✅ [Control available public, private routes](#control-available-public-private-routes)
     - ✅ [[BETA] AWS Key Manager v2 - Key Decryption](#beta-aws-key-manager---key-decryption)
+    - ✅ IP address‑based access control lists
+    - ✅ Track Request IP Address
     - ✅ [Use LiteLLM keys/authentication on Pass Through Endpoints](pass_through#✨-enterprise---use-litellm-keysauthentication-on-pass-through-endpoints)
+    - ✅ Set Max Request / File Size on Requests
     - ✅ [Enforce Required Params for LLM Requests (ex. Reject requests missing ["metadata"]["generation_name"])](#enforce-required-params-for-llm-requests)
 - **Spend Tracking**
     - ✅ [Tracking Spend for Custom Tags](#tracking-spend-for-custom-tags)
@@ -1057,10 +1060,10 @@ curl --location 'http://0.0.0.0:4000/chat/completions' \
 ### Using via API
 
 
-**Block all calls for a user id**
+**Block all calls for a customer id**
 
 ```
-curl -X POST "http://0.0.0.0:4000/user/block" \
+curl -X POST "http://0.0.0.0:4000/customer/block" \
 -H "Authorization: Bearer sk-1234" \ 
 -D '{
 "user_ids": [<user_id>, ...] 
@@ -1076,6 +1079,8 @@ curl -X POST "http://0.0.0.0:4000/user/unblock" \
 "user_ids": [<user_id>, ...] 
 }'
 ```
+
+
 
 ## Enable Banned Keywords List
 

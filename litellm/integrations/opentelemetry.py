@@ -52,6 +52,12 @@ class OpenTelemetryConfig:
 
         OTEL_HEADERS gets sent as headers = {"x-honeycomb-team": "B85YgLm96******"}
         """
+        from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+            InMemorySpanExporter,
+        )
+
+        if os.getenv("OTEL_EXPORTER") == "in_memory":
+            return cls(exporter=InMemorySpanExporter())
         return cls(
             exporter=os.getenv("OTEL_EXPORTER", "console"),
             endpoint=os.getenv("OTEL_ENDPOINT"),
@@ -282,6 +288,11 @@ class OpenTelemetry(CustomLogger):
             )
             pass
 
+    def is_primitive(self, value):
+        if value is None:
+            return False
+        return isinstance(value, (str, bool, int, float))
+
     def set_attributes(self, span: Span, kwargs, response_obj):
         from litellm.proxy._types import SpanAttributes
 
@@ -290,6 +301,14 @@ class OpenTelemetry(CustomLogger):
 
         # https://github.com/open-telemetry/semantic-conventions/blob/main/model/registry/gen-ai.yaml
         # Following Conventions here: https://github.com/open-telemetry/semantic-conventions/blob/main/docs/gen-ai/llm-spans.md
+        #############################################
+        ############ LLM CALL METADATA ##############
+        #############################################
+        metadata = litellm_params.get("metadata", {}) or {}
+
+        for key, value in metadata.items():
+            if self.is_primitive(value):
+                span.set_attribute("metadata.{}".format(key), value)
 
         #############################################
         ########## LLM Request Attributes ###########
@@ -467,8 +486,6 @@ class OpenTelemetry(CustomLogger):
                     f"llm.{custom_llm_provider}.stringified_raw_response",
                     _raw_response,
                 )
-
-        pass
 
     def _to_ns(self, dt):
         return int(dt.timestamp() * 1e9)

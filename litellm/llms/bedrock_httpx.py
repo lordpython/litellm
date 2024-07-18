@@ -44,7 +44,13 @@ from litellm.types.llms.openai import (
     ChatCompletionToolCallFunctionChunk,
 )
 from litellm.types.utils import Choices, Message
-from litellm.utils import CustomStreamWrapper, ModelResponse, Usage, get_secret
+from litellm.utils import (
+    CustomStreamWrapper,
+    ModelResponse,
+    Usage,
+    get_secret,
+    print_verbose,
+)
 
 from .base import BaseLLM
 from .bedrock import BedrockError, ModelResponseIterator, convert_messages_to_prompt
@@ -328,6 +334,10 @@ class BedrockLLM(BaseLLM):
         """
         import boto3
 
+        print_verbose(
+            f"Boto3 get_credentials called variables passed to function {locals()}"
+        )
+
         ## CHECK IS  'os.environ/' passed in
         params_to_check: List[Optional[str]] = [
             aws_access_key_id,
@@ -364,6 +374,9 @@ class BedrockLLM(BaseLLM):
             and aws_role_name is not None
             and aws_session_name is not None
         ):
+            print_verbose(
+                f"IN Web Identity Token: {aws_web_identity_token} | Role Name: {aws_role_name} | Session Name: {aws_session_name}"
+            )
             iam_creds_cache_key = json.dumps(
                 {
                     "aws_web_identity_token": aws_web_identity_token,
@@ -419,6 +432,9 @@ class BedrockLLM(BaseLLM):
 
             return iam_creds
         elif aws_role_name is not None and aws_session_name is not None:
+            print_verbose(
+                f"Using STS Client AWS aws_role_name: {aws_role_name} aws_session_name: {aws_session_name}"
+            )
             sts_client = boto3.client(
                 "sts",
                 aws_access_key_id=aws_access_key_id,  # [OPTIONAL]
@@ -441,6 +457,7 @@ class BedrockLLM(BaseLLM):
             return credentials
         elif aws_profile_name is not None:  ### CHECK SESSION ###
             # uses auth values from AWS profile usually stored in ~/.aws/credentials
+            print_verbose(f"Using AWS profile: {aws_profile_name}")
             client = boto3.Session(profile_name=aws_profile_name)
 
             return client.get_credentials()
@@ -449,6 +466,7 @@ class BedrockLLM(BaseLLM):
             and aws_secret_access_key is not None
             and aws_session_token is not None
         ):  ### CHECK FOR AWS SESSION TOKEN ###
+            print_verbose(f"Using AWS Session Token: {aws_session_token}")
             from botocore.credentials import Credentials
 
             credentials = Credentials(
@@ -458,6 +476,7 @@ class BedrockLLM(BaseLLM):
             )
             return credentials
         else:
+            print_verbose("Using Default AWS Session")
             session = boto3.Session(
                 aws_access_key_id=aws_access_key_id,
                 aws_secret_access_key=aws_secret_access_key,
@@ -502,7 +521,7 @@ class BedrockLLM(BaseLLM):
                     outputText = completion_response["text"]  # type: ignore
                 elif "generations" in completion_response:
                     outputText = completion_response["generations"][0]["text"]
-                    model_response["finish_reason"] = map_finish_reason(
+                    model_response.choices[0].finish_reason = map_finish_reason(
                         completion_response["generations"][0]["finish_reason"]
                     )
             elif provider == "anthropic":
@@ -606,7 +625,7 @@ class BedrockLLM(BaseLLM):
                                 logging_obj=logging_obj,
                             )
 
-                    model_response["finish_reason"] = map_finish_reason(
+                    model_response.choices[0].finish_reason = map_finish_reason(
                         completion_response.get("stop_reason", "")
                     )
                     _usage = litellm.Usage(
@@ -619,7 +638,9 @@ class BedrockLLM(BaseLLM):
                 else:
                     outputText = completion_response["completion"]
 
-                    model_response["finish_reason"] = completion_response["stop_reason"]
+                    model_response.choices[0].finish_reason = completion_response[
+                        "stop_reason"
+                    ]
             elif provider == "ai21":
                 outputText = (
                     completion_response.get("completions")[0].get("data").get("text")
@@ -628,9 +649,9 @@ class BedrockLLM(BaseLLM):
                 outputText = completion_response["generation"]
             elif provider == "mistral":
                 outputText = completion_response["outputs"][0]["text"]
-                model_response["finish_reason"] = completion_response["outputs"][0][
-                    "stop_reason"
-                ]
+                model_response.choices[0].finish_reason = completion_response[
+                    "outputs"
+                ][0]["stop_reason"]
             else:  # amazon titan
                 outputText = completion_response.get("results")[0].get("outputText")
         except Exception as e:
@@ -648,7 +669,7 @@ class BedrockLLM(BaseLLM):
                 and getattr(model_response.choices[0].message, "tool_calls", None)
                 is None
             ):
-                model_response["choices"][0]["message"]["content"] = outputText
+                model_response.choices[0].message.content = outputText
             elif (
                 hasattr(model_response.choices[0], "message")
                 and getattr(model_response.choices[0].message, "tool_calls", None)
@@ -704,8 +725,8 @@ class BedrockLLM(BaseLLM):
             )
         )
 
-        model_response["created"] = int(time.time())
-        model_response["model"] = model
+        model_response.created = int(time.time())
+        model_response.model = model
         usage = Usage(
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
@@ -1047,7 +1068,7 @@ class BedrockLLM(BaseLLM):
 
             if response.status_code != 200:
                 raise BedrockError(
-                    status_code=response.status_code, message=response.text
+                    status_code=response.status_code, message=response.read()
                 )
 
             decoder = AWSEventStreamDecoder(model=model)
@@ -1427,8 +1448,8 @@ class BedrockConverseLLM(BaseLLM):
                 message=litellm.Message(**chat_completion_message),
             )
         ]
-        model_response["created"] = int(time.time())
-        model_response["model"] = model
+        model_response.created = int(time.time())
+        model_response.model = model
         usage = Usage(
             prompt_tokens=input_tokens,
             completion_tokens=output_tokens,
@@ -1794,7 +1815,12 @@ class BedrockConverseLLM(BaseLLM):
         system_content_blocks: List[SystemContentBlock] = []
         for idx, message in enumerate(messages):
             if message["role"] == "system":
-                _system_content_block = SystemContentBlock(text=message["content"])
+                if isinstance(message["content"], str):
+                    _system_content_block = SystemContentBlock(text=message["content"])
+                elif isinstance(message["content"], list):
+                    for m in message["content"]:
+                        if m.get("type", "") == "text":
+                            _system_content_block = SystemContentBlock(text=m["text"])
                 system_content_blocks.append(_system_content_block)
                 system_prompt_indices.append(idx)
         if len(system_prompt_indices) > 0:
@@ -1819,7 +1845,9 @@ class BedrockConverseLLM(BaseLLM):
             inference_params.pop(key, None)
 
         bedrock_messages: List[MessageBlock] = _bedrock_converse_messages_pt(
-            messages=messages
+            messages=messages,
+            model=model,
+            llm_provider="bedrock_converse",
         )
         bedrock_tools: List[ToolBlock] = _bedrock_tools_pt(
             inference_params.pop("tools", [])

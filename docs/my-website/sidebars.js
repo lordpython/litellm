@@ -37,6 +37,7 @@ const sidebars = {
           href: "https://litellm-api.up.railway.app/",
         },
         "proxy/enterprise",
+        "proxy/user_keys",
         "proxy/demo",
         "proxy/configs",
         "proxy/reliability",
@@ -46,7 +47,6 @@ const sidebars = {
         "proxy/team_budgets",
         "proxy/customers",
         "proxy/billing",
-        "proxy/user_keys",
         "proxy/virtual_keys",
         "proxy/guardrails",
         "proxy/token_auth",
@@ -90,6 +90,7 @@ const sidebars = {
       },
       items: [
         "completion/input",
+        "completion/provider_specific_params",
         "completion/drop_params",
         "completion/prompt_formatting",
         "completion/output",
@@ -116,6 +117,7 @@ const sidebars = {
         "text_to_speech",
         "assistants",
         "batches",
+        "anthropic_completion"
       ],
     },
     {
@@ -191,6 +193,8 @@ const sidebars = {
         "debugging/local_debugging",
         "observability/raw_request_response",
         "observability/custom_callback",
+        "observability/scrub_data",
+        "observability/helicone_integration",
         "observability/sentry",
         "observability/lago",
         "observability/openmeter",
@@ -202,7 +206,6 @@ const sidebars = {
         "observability/athina_integration",
         "observability/lunary_integration",
         "observability/greenscale_integration",
-        "observability/helicone_integration",
         "observability/supabase_integration",
         `observability/telemetry`,
       ],
@@ -236,6 +239,7 @@ const sidebars = {
       label: "Extras",
       items: [
         "extras/contributing",
+        "data_security",
         "contributing",
         "rules",
         "proxy_server",
