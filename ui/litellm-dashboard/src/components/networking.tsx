@@ -5,12 +5,50 @@ import { message } from "antd";
 
 const isLocal = process.env.NODE_ENV === "development";
 const proxyBaseUrl = isLocal ? "http://localhost:4000" : null;
+if (isLocal != true) {
+  console.log = function() {};
+}
 
 export interface Model {
   model_name: string;
   litellm_params: Object;
   model_info: Object | null;
 }
+
+const baseUrl = "/"; // Assuming the base URL is the root
+
+
+let lastErrorTime = 0;
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+const handleError = async (errorData: string) => {
+  const currentTime = Date.now();
+  if (currentTime - lastErrorTime > 60000) { // 60000 milliseconds = 60 seconds
+    if (errorData.includes("Authentication Error - Expired Key")) {
+      message.info("UI Session Expired. Logging out.");
+      lastErrorTime = currentTime;
+      await sleep(3000); // 5 second sleep
+      window.location.href = baseUrl;
+    } else {
+      message.error(errorData);
+    }
+    lastErrorTime = currentTime;
+  } else {
+    console.log("Error suppressed to prevent spam:", errorData);
+  }
+};
+
+
+// Global variable for the header name
+let globalLitellmHeaderName: string  = "Authorization";
+
+// Function to set the global header name
+export function setGlobalLitellmHeaderName(headerName: string = "Authorization") {
+  console.log(`setGlobalLitellmHeaderName: ${headerName}`);
+  globalLitellmHeaderName = headerName;
+}
+
 
 export const modelCostMap = async (
   accessToken: string,
@@ -21,7 +59,7 @@ export const modelCostMap = async (
       url, {
         method: "GET",
         headers: {
-          Authorization: `Bearer ${accessToken}`,
+          [globalLitellmHeaderName]: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
         },
       }
@@ -44,7 +82,7 @@ export const modelCreateCall = async (
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -54,7 +92,6 @@ export const modelCreateCall = async (
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error("Failed to create key: " + errorData, 10);
       console.error("Error response from the server:", errorData);
       throw new Error("Network response was not ok");
     }
@@ -84,14 +121,14 @@ export const modelSettingsCall = async (accessToken: String) => {
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error(errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
 
@@ -115,7 +152,7 @@ export const modelDeleteCall = async (
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -125,7 +162,7 @@ export const modelDeleteCall = async (
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error("Failed to create key: " + errorData, 10);
+      handleError(errorData);
       console.error("Error response from the server:", errorData);
       throw new Error("Network response was not ok");
     }
@@ -157,7 +194,7 @@ export const budgetDeleteCall = async (
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -167,7 +204,7 @@ export const budgetDeleteCall = async (
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error("Failed to create key: " + errorData, 10);
+      handleError(errorData);
       console.error("Error response from the server:", errorData);
       throw new Error("Network response was not ok");
     }
@@ -192,7 +229,7 @@ export const budgetCreateCall = async (
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -202,7 +239,7 @@ export const budgetCreateCall = async (
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error("Failed to create key: " + errorData, 10);
+      handleError(errorData);
       console.error("Error response from the server:", errorData);
       throw new Error("Network response was not ok");
     }
@@ -228,7 +265,7 @@ export const invitationCreateCall = async (
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -238,7 +275,7 @@ export const invitationCreateCall = async (
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error("Failed to create key: " + errorData, 10);
+      handleError(errorData);
       console.error("Error response from the server:", errorData);
       throw new Error("Network response was not ok");
     }
@@ -267,7 +304,7 @@ export const invitationClaimCall = async (
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -277,7 +314,7 @@ export const invitationClaimCall = async (
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error("Failed to create key: " + errorData, 10);
+      handleError(errorData);
       console.error("Error response from the server:", errorData);
       throw new Error("Network response was not ok");
     }
@@ -305,14 +342,14 @@ export const alertingSettingsCall = async (accessToken: String) => {
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error(errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
 
@@ -353,7 +390,6 @@ export const keyCreateCall = async (
       try {
         formValues.metadata = JSON.parse(formValues.metadata);
       } catch (error) {
-        message.error("Failed to parse metadata: " + error, 10);
         throw new Error("Failed to parse metadata: " + error);
       }
     }
@@ -363,7 +399,7 @@ export const keyCreateCall = async (
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -374,7 +410,7 @@ export const keyCreateCall = async (
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error("Failed to create key: " + errorData, 10);
+      handleError(errorData);
       console.error("Error response from the server:", errorData);
       throw new Error("Network response was not ok");
     }
@@ -416,7 +452,6 @@ export const userCreateCall = async (
       try {
         formValues.metadata = JSON.parse(formValues.metadata);
       } catch (error) {
-        message.error("Failed to parse metadata: " + error, 10);
         throw new Error("Failed to parse metadata: " + error);
       }
     }
@@ -426,7 +461,7 @@ export const userCreateCall = async (
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -437,7 +472,7 @@ export const userCreateCall = async (
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error("Failed to create key: " + errorData, 10);
+      handleError(errorData);
       console.error("Error response from the server:", errorData);
       throw new Error("Network response was not ok");
     }
@@ -460,7 +495,7 @@ export const keyDeleteCall = async (accessToken: String, user_key: String) => {
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -470,7 +505,7 @@ export const keyDeleteCall = async (accessToken: String, user_key: String) => {
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error("Failed to delete key: " + errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
 
@@ -492,7 +527,7 @@ export const teamDeleteCall = async (accessToken: String, teamID: String) => {
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -502,7 +537,7 @@ export const teamDeleteCall = async (accessToken: String, teamID: String) => {
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error("Failed to delete team: " + errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
     const data = await response.json();
@@ -545,14 +580,14 @@ export const userInfoCall = async (
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error(errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
 
@@ -580,14 +615,14 @@ export const teamInfoCall = async (
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error(errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
 
@@ -612,14 +647,14 @@ export const getTotalSpendCall = async (accessToken: String) => {
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error(errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
 
@@ -651,7 +686,7 @@ export const getOnboardingCredentials = async (inviteUUID: String) => {
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error(errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
 
@@ -677,7 +712,7 @@ export const claimOnboardingToken = async (
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -689,7 +724,7 @@ export const claimOnboardingToken = async (
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error("Failed to delete team: " + errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
     const data = await response.json();
@@ -719,7 +754,7 @@ export const modelInfoCall = async (
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
@@ -767,7 +802,7 @@ export const modelHubCall = async (accessToken: String) => {
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
@@ -798,7 +833,7 @@ export const getAllowedIPs = async (accessToken: String) => {
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
@@ -827,7 +862,7 @@ export const addAllowedIP = async (accessToken: String, ip: String) => {
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ ip: ip }),
@@ -857,7 +892,7 @@ export const deleteAllowedIP = async (accessToken: String, ip: String) => {
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ ip: ip }),
@@ -899,14 +934,14 @@ export const modelMetricsCall = async (
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error(errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
     const data = await response.json();
@@ -938,14 +973,14 @@ export const streamingModelMetricsCall = async (
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error(errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
     const data = await response.json();
@@ -983,14 +1018,14 @@ export const modelMetricsSlowResponsesCall = async (
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error(errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
     const data = await response.json();
@@ -1027,14 +1062,14 @@ export const modelExceptionsCall = async (
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error(errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
     const data = await response.json();
@@ -1055,6 +1090,7 @@ export const modelAvailableCall = async (
   /**
    * Get all the models user has access to
    */
+  console.log("in /models calls, globalLitellmHeaderName", globalLitellmHeaderName)
   try {
     let url = proxyBaseUrl ? `${proxyBaseUrl}/models` : `/models`;
 
@@ -1062,14 +1098,14 @@ export const modelAvailableCall = async (
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error(errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
 
@@ -1092,13 +1128,13 @@ export const keySpendLogsCall = async (accessToken: String, token: String) => {
     const response = await fetch(`${url}?api_key=${token}`, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
     if (!response.ok) {
       const errorData = await response.text();
-      message.error(errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
 
@@ -1120,13 +1156,13 @@ export const teamSpendLogsCall = async (accessToken: String) => {
     const response = await fetch(`${url}`, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
     if (!response.ok) {
       const errorData = await response.text();
-      message.error(errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
 
@@ -1163,7 +1199,7 @@ export const tagsSpendLogsCall = async (
     const response = await fetch(`${url}`, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
@@ -1191,7 +1227,7 @@ export const allTagNamesCall = async (accessToken: String) => {
     const response = await fetch(`${url}`, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
@@ -1219,7 +1255,7 @@ export const allEndUsersCall = async (accessToken: String) => {
     const response = await fetch(`${url}`, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
@@ -1257,13 +1293,13 @@ export const userSpendLogsCall = async (
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
     if (!response.ok) {
       const errorData = await response.text();
-      message.error(errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
 
@@ -1287,13 +1323,13 @@ export const adminSpendLogsCall = async (accessToken: String) => {
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
     if (!response.ok) {
       const errorData = await response.text();
-      message.error(errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
 
@@ -1317,13 +1353,13 @@ export const adminTopKeysCall = async (accessToken: String) => {
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
     if (!response.ok) {
       const errorData = await response.text();
-      message.error(errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
 
@@ -1362,27 +1398,20 @@ export const adminTopEndUsersCall = async (
     //message.info("Making top end users request");
 
     // Define requestOptions with body as an optional property
-    const requestOptions: {
-      method: string;
-      headers: {
-        Authorization: string;
-        "Content-Type": string;
-      };
-      body?: string; // The body is optional and might not be present
-    } = {
+    const requestOptions = {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
+      body: body,
     };
 
-    requestOptions.body = body;
 
     const response = await fetch(url, requestOptions);
     if (!response.ok) {
       const errorData = await response.text();
-      message.error(errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
 
@@ -1415,15 +1444,10 @@ export const adminspendByProvider = async (
       url += `&api_key=${keyToken}`;
     }
 
-    const requestOptions: {
-      method: string;
-      headers: {
-        Authorization: string;
-      };
-    } = {
+    const requestOptions = {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
       },
     };
 
@@ -1431,7 +1455,7 @@ export const adminspendByProvider = async (
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error(errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
 
@@ -1458,15 +1482,10 @@ export const adminGlobalActivity = async (
       url += `?start_date=${startTime}&end_date=${endTime}`;
     }
 
-    const requestOptions: {
-      method: string;
-      headers: {
-        Authorization: string;
-      };
-    } = {
+    const requestOptions = {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
       },
     };
 
@@ -1499,15 +1518,10 @@ export const adminGlobalCacheActivity = async (
       url += `?start_date=${startTime}&end_date=${endTime}`;
     }
 
-    const requestOptions: {
-      method: string;
-      headers: {
-        Authorization: string;
-      };
-    } = {
+    const requestOptions = {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
       },
     };
 
@@ -1540,15 +1554,10 @@ export const adminGlobalActivityPerModel = async (
       url += `?start_date=${startTime}&end_date=${endTime}`;
     }
 
-    const requestOptions: {
-      method: string;
-      headers: {
-        Authorization: string;
-      };
-    } = {
+    const requestOptions = {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
       },
     };
 
@@ -1586,15 +1595,10 @@ export const adminGlobalActivityExceptions = async (
       url += `&model_group=${modelGroup}`;
     }
 
-    const requestOptions: {
-      method: string;
-      headers: {
-        Authorization: string;
-      };
-    } = {
+    const requestOptions = {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
       },
     };
 
@@ -1632,15 +1636,10 @@ export const adminGlobalActivityExceptionsPerDeployment = async (
       url += `&model_group=${modelGroup}`;
     }
 
-    const requestOptions: {
-      method: string;
-      headers: {
-        Authorization: string;
-      };
-    } = {
+    const requestOptions = {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
       },
     };
 
@@ -1669,13 +1668,13 @@ export const adminTopModelsCall = async (accessToken: String) => {
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
     if (!response.ok) {
       const errorData = await response.text();
-      message.error(errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
 
@@ -1696,7 +1695,7 @@ export const keyInfoCall = async (accessToken: String, keys: String[]) => {
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -1706,7 +1705,7 @@ export const keyInfoCall = async (accessToken: String, keys: String[]) => {
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error(errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
 
@@ -1726,13 +1725,13 @@ export const spendUsersCall = async (accessToken: String, userID: String) => {
     const response = await fetch(`${url}?user_id=${userID}`, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
     if (!response.ok) {
       const errorData = await response.text();
-      message.error(errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
 
@@ -1758,7 +1757,7 @@ export const userRequestModelCall = async (
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -1770,7 +1769,7 @@ export const userRequestModelCall = async (
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error("Failed to delete key: " + errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
     const data = await response.json();
@@ -1793,14 +1792,14 @@ export const userGetRequesedtModelsCall = async (accessToken: String) => {
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error("Failed to delete key: " + errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
     const data = await response.json();
@@ -1833,14 +1832,14 @@ export const userGetAllUsersCall = async (
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error("Failed to delete key: " + errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
     const data = await response.json();
@@ -1862,7 +1861,7 @@ export const getPossibleUserRoles = async (accessToken: String) => {
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
@@ -1891,7 +1890,7 @@ export const teamCreateCall = async (
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -1901,7 +1900,7 @@ export const teamCreateCall = async (
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error("Failed to create key: " + errorData, 10);
+      handleError(errorData);
       console.error("Error response from the server:", errorData);
       throw new Error("Network response was not ok");
     }
@@ -1927,7 +1926,7 @@ export const keyUpdateCall = async (
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -1937,7 +1936,7 @@ export const keyUpdateCall = async (
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error("Failed to update key: " + errorData, 10);
+      handleError(errorData);
       console.error("Error response from the server:", errorData);
       throw new Error("Network response was not ok");
     }
@@ -1962,7 +1961,7 @@ export const teamUpdateCall = async (
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -1972,7 +1971,7 @@ export const teamUpdateCall = async (
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error("Failed to update team: " + errorData, 10);
+      handleError(errorData);
       console.error("Error response from the server:", errorData);
       throw new Error("Network response was not ok");
     }
@@ -1997,7 +1996,7 @@ export const modelUpdateCall = async (
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -2007,7 +2006,7 @@ export const modelUpdateCall = async (
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error("Failed to update model: " + errorData, 10);
+      handleError(errorData);
       console.error("Error update from the server:", errorData);
       throw new Error("Network response was not ok");
     }
@@ -2041,7 +2040,7 @@ export const teamMemberAddCall = async (
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -2052,7 +2051,7 @@ export const teamMemberAddCall = async (
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error("Failed to create key: " + errorData, 10);
+      handleError(errorData);
       console.error("Error response from the server:", errorData);
       throw new Error("Network response was not ok");
     }
@@ -2084,7 +2083,7 @@ export const userUpdateUserCall = async (
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       body: response_body,
@@ -2092,7 +2091,7 @@ export const userUpdateUserCall = async (
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error("Failed to create key: " + errorData, 10);
+      handleError(errorData);
       console.error("Error response from the server:", errorData);
       throw new Error("Network response was not ok");
     }
@@ -2122,7 +2121,7 @@ export const PredictedSpendLogsCall = async (
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -2132,7 +2131,7 @@ export const PredictedSpendLogsCall = async (
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error(errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
 
@@ -2158,14 +2157,14 @@ export const slackBudgetAlertsHealthCheck = async (accessToken: String) => {
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error("Failed Slack Alert test: " + errorData);
+      handleError(errorData);
       // throw error with message
       throw new Error(errorData);
     }
@@ -2197,14 +2196,14 @@ export const serviceHealthCheck = async (
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error(`Failed ${service} service health check ` + errorData);
+      handleError(errorData);
       // throw error with message
       throw new Error(errorData);
     }
@@ -2232,14 +2231,14 @@ export const getBudgetList = async (accessToken: String) => {
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error(errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
 
@@ -2265,14 +2264,14 @@ export const getBudgetSettings = async (accessToken: String) => {
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error(errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
 
@@ -2303,14 +2302,14 @@ export const getCallbacksCall = async (
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error(errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
 
@@ -2334,14 +2333,14 @@ export const getGeneralSettingsCall = async (accessToken: String) => {
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error(errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
 
@@ -2368,7 +2367,7 @@ export const getConfigFieldSetting = async (
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
@@ -2406,7 +2405,7 @@ export const updateConfigFieldSetting = async (
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(formData),
@@ -2414,7 +2413,7 @@ export const updateConfigFieldSetting = async (
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error(errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
 
@@ -2446,7 +2445,7 @@ export const deleteConfigFieldSetting = async (
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(formData),
@@ -2454,7 +2453,7 @@ export const deleteConfigFieldSetting = async (
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error(errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
 
@@ -2481,7 +2480,7 @@ export const setCallbacksCall = async (
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -2491,7 +2490,7 @@ export const setCallbacksCall = async (
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error(errorData, 10);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
 
@@ -2516,14 +2515,14 @@ export const healthCheckCall = async (accessToken: String) => {
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
 
     if (!response.ok) {
       const errorData = await response.text();
-      message.error(errorData);
+      handleError(errorData);
       throw new Error("Network response was not ok");
     }
 
@@ -2552,7 +2551,7 @@ export const getProxyBaseUrlAndLogoutUrl = async (
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });

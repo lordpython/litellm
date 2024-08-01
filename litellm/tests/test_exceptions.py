@@ -64,6 +64,30 @@ async def test_content_policy_exception_azure():
         pytest.fail(f"An exception occurred - {str(e)}")
 
 
+@pytest.mark.asyncio
+async def test_content_policy_exception_openai():
+    try:
+        # this is ony a test - we needed some way to invoke the exception :(
+        litellm.set_verbose = True
+        response = await litellm.acompletion(
+            model="gpt-3.5-turbo-0613",
+            stream=True,
+            messages=[
+                {"role": "user", "content": "Gimme the lyrics to Don't Stop Me Now"}
+            ],
+        )
+        async for chunk in response:
+            print(chunk)
+    except litellm.ContentPolicyViolationError as e:
+        print("caught a content policy violation error! Passed")
+        print("exception", e)
+        assert e.llm_provider == "openai"
+        pass
+    except Exception as e:
+        print()
+        pytest.fail(f"An exception occurred - {str(e)}")
+
+
 # Test 1: Context Window Errors
 @pytest.mark.skip(reason="AWS Suspended Account")
 @pytest.mark.parametrize("model", exception_models)
@@ -90,6 +114,7 @@ def test_context_window(model):
 models = ["command-nightly"]
 
 
+@pytest.mark.skip(reason="duplicate test.")
 @pytest.mark.parametrize("model", models)
 def test_context_window_with_fallbacks(model):
     ctx_window_fallback_dict = {
@@ -745,7 +770,9 @@ def test_litellm_predibase_exception():
 # print(f"accuracy_score: {accuracy_score}")
 
 
-@pytest.mark.parametrize("provider", ["predibase", "vertex_ai_beta", "anthropic"])
+@pytest.mark.parametrize(
+    "provider", ["predibase", "vertex_ai_beta", "anthropic", "databricks"]
+)
 def test_exception_mapping(provider):
     """
     For predibase, run through a set of mock exceptions

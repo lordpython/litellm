@@ -18,6 +18,7 @@ from litellm.proxy._types import (
     LiteLLM_AuditLogs,
     LiteLLM_ModelTable,
     LiteLLM_TeamTable,
+    LiteLLM_TeamTableCachedObj,
     LitellmTableNames,
     LitellmUserRoles,
     Member,
@@ -328,11 +329,14 @@ async def update_team(
     }'
     ```
     """
+    from litellm.proxy.auth.auth_checks import _cache_team_object
     from litellm.proxy.proxy_server import (
         _duration_in_seconds,
         create_audit_log_for_update,
         litellm_proxy_admin_name,
         prisma_client,
+        proxy_logging_obj,
+        user_api_key_cache,
     )
 
     if prisma_client is None:
@@ -361,11 +365,24 @@ async def update_team(
         # set the budget_reset_at in DB
         updated_kv["budget_reset_at"] = reset_at
 
-    team_row = await prisma_client.update_data(
-        update_key_values=updated_kv,
-        data=updated_kv,
-        table_name="team",
-        team_id=data.team_id,
+    updated_kv = prisma_client.jsonify_object(data=updated_kv)
+    team_row: Optional[
+        LiteLLM_TeamTable
+    ] = await prisma_client.db.litellm_teamtable.update(
+        where={"team_id": data.team_id}, data=updated_kv  # type: ignore
+    )
+
+    if team_row is None or team_row.team_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "Team doesn't exist. Got={}".format(team_row)},
+        )
+
+    await _cache_team_object(
+        team_id=team_row.team_id,
+        team_table=LiteLLM_TeamTableCachedObj(**team_row.model_dump()),
+        user_api_key_cache=user_api_key_cache,
+        proxy_logging_obj=proxy_logging_obj,
     )
 
     # Enterprise Feature - Audit Logging. Enable with litellm.store_audit_logs = True
@@ -392,7 +409,7 @@ async def update_team(
             )
         )
 
-    return team_row
+    return {"team_id": team_row.team_id, "data": team_row}
 
 
 @router.post(

@@ -40,6 +40,8 @@ class ModelInfo(TypedDict, total=False):
     Model info for a given model, this is information found in litellm.model_prices_and_context_window.json
     """
 
+    key: Required[str]  # the key in litellm.model_cost which is returned
+
     max_tokens: Required[Optional[int]]
     max_input_tokens: Required[Optional[int]]
     max_output_tokens: Required[Optional[int]]
@@ -74,6 +76,7 @@ class ModelInfo(TypedDict, total=False):
     supports_system_messages: Optional[bool]
     supports_response_schema: Optional[bool]
     supports_vision: Optional[bool]
+    supports_function_calling: Optional[bool]
 
 
 class GenericStreamingChunk(TypedDict):
@@ -311,7 +314,14 @@ class Message(OpenAIObject):
                 FunctionCall(**function_call) if function_call is not None else None
             ),
             "tool_calls": (
-                [ChatCompletionMessageToolCall(**tool_call) for tool_call in tool_calls]
+                [
+                    (
+                        ChatCompletionMessageToolCall(**tool_call)
+                        if isinstance(tool_call, dict)
+                        else tool_call
+                    )
+                    for tool_call in tool_calls
+                ]
                 if tool_calls is not None
                 else None
             ),
@@ -536,6 +546,8 @@ class ModelResponse(OpenAIObject):
 
     _hidden_params: dict = {}
 
+    _response_headers: Optional[dict] = None
+
     def __init__(
         self,
         id=None,
@@ -549,6 +561,7 @@ class ModelResponse(OpenAIObject):
         stream_options=None,
         response_ms=None,
         hidden_params=None,
+        _response_headers=None,
         **params,
     ) -> None:
         if stream is not None and stream is True:
@@ -597,6 +610,9 @@ class ModelResponse(OpenAIObject):
             usage = Usage()
         if hidden_params:
             self._hidden_params = hidden_params
+
+        if _response_headers:
+            self._response_headers = _response_headers
 
         init_values = {
             "id": id,
@@ -667,6 +683,7 @@ class EmbeddingResponse(OpenAIObject):
     """Usage statistics for the embedding request."""
 
     _hidden_params: dict = {}
+    _response_headers: Optional[Dict] = None
 
     def __init__(
         self,
@@ -675,6 +692,8 @@ class EmbeddingResponse(OpenAIObject):
         stream=False,
         response_ms=None,
         data=None,
+        hidden_params=None,
+        _response_headers=None,
         **params,
     ):
         object = "list"
@@ -691,6 +710,9 @@ class EmbeddingResponse(OpenAIObject):
             usage = usage
         else:
             usage = Usage()
+
+        if _response_headers:
+            self._response_headers = _response_headers
 
         model = model
         super().__init__(model=model, object=object, data=data, usage=usage)
@@ -974,6 +996,7 @@ class TranscriptionResponse(OpenAIObject):
     text: Optional[str] = None
 
     _hidden_params: dict = {}
+    _response_headers: Optional[dict] = None
 
     def __init__(self, text=None):
         super().__init__(text=text)
@@ -1016,3 +1039,22 @@ class GenericImageParsingChunk(TypedDict):
 class ResponseFormatChunk(TypedDict, total=False):
     type: Required[Literal["json_object", "text"]]
     response_schema: dict
+
+
+class LoggedLiteLLMParams(TypedDict, total=False):
+    force_timeout: Optional[float]
+    custom_llm_provider: Optional[str]
+    api_base: Optional[str]
+    litellm_call_id: Optional[str]
+    model_alias_map: Optional[dict]
+    metadata: Optional[dict]
+    model_info: Optional[dict]
+    proxy_server_request: Optional[dict]
+    acompletion: Optional[bool]
+    preset_cache_key: Optional[str]
+    no_log: Optional[bool]
+    input_cost_per_second: Optional[float]
+    input_cost_per_token: Optional[float]
+    output_cost_per_token: Optional[float]
+    output_cost_per_second: Optional[float]
+    cooldown_time: Optional[float]

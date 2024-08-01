@@ -52,6 +52,7 @@ from litellm.router_strategy.lowest_cost import LowestCostLoggingHandler
 from litellm.router_strategy.lowest_latency import LowestLatencyLoggingHandler
 from litellm.router_strategy.lowest_tpm_rpm import LowestTPMLoggingHandler
 from litellm.router_strategy.lowest_tpm_rpm_v2 import LowestTPMLoggingHandler_v2
+from litellm.router_strategy.tag_based_routing import get_deployments_for_tag
 from litellm.router_utils.client_initalization_utils import (
     set_client,
     should_initialize_sync_client,
@@ -144,6 +145,7 @@ class Router:
         content_policy_fallbacks: List = [],
         model_group_alias: Optional[dict] = {},
         enable_pre_call_checks: bool = False,
+        enable_tag_filtering: bool = False,
         retry_after: int = 0,  # min time to wait before retrying a failed request
         retry_policy: Optional[
             RetryPolicy
@@ -172,7 +174,9 @@ class Router:
         routing_strategy_args: dict = {},  # just for latency-based routing
         semaphore: Optional[asyncio.Semaphore] = None,
         alerting_config: Optional[AlertingConfig] = None,
-        router_general_settings: Optional[RouterGeneralSettings] = None,
+        router_general_settings: Optional[
+            RouterGeneralSettings
+        ] = RouterGeneralSettings(),
     ) -> None:
         """
         Initialize the Router class with the given parameters for caching, reliability, and routing strategy.
@@ -245,13 +249,14 @@ class Router:
         self.set_verbose = set_verbose
         self.debug_level = debug_level
         self.enable_pre_call_checks = enable_pre_call_checks
+        self.enable_tag_filtering = enable_tag_filtering
         if self.set_verbose == True:
             if debug_level == "INFO":
                 verbose_router_logger.setLevel(logging.INFO)
             elif debug_level == "DEBUG":
                 verbose_router_logger.setLevel(logging.DEBUG)
-        self.router_general_settings: Optional[RouterGeneralSettings] = (
-            router_general_settings
+        self.router_general_settings: RouterGeneralSettings = (
+            router_general_settings or RouterGeneralSettings()
         )
 
         self.assistants_config = assistants_config
@@ -260,7 +265,9 @@ class Router:
         )  # names of models under litellm_params. ex. azure/chatgpt-v-2
         self.deployment_latency_map = {}
         ### CACHING ###
-        cache_type: Literal["local", "redis"] = "local"  # default to an in-memory cache
+        cache_type: Literal["local", "redis", "redis-semantic", "s3", "disk"] = (
+            "local"  # default to an in-memory cache
+        )
         redis_cache = None
         cache_config = {}
         self.client_ttl = client_ttl
@@ -414,14 +421,15 @@ class Router:
             litellm.failure_callback.append(self.deployment_callback_on_failure)
         else:
             litellm.failure_callback = [self.deployment_callback_on_failure]
-        print(  # noqa
+        verbose_router_logger.debug(
             f"Intialized router with Routing strategy: {self.routing_strategy}\n\n"
             f"Routing enable_pre_call_checks: {self.enable_pre_call_checks}\n\n"
             f"Routing fallbacks: {self.fallbacks}\n\n"
             f"Routing content fallbacks: {self.content_policy_fallbacks}\n\n"
             f"Routing context window fallbacks: {self.context_window_fallbacks}\n\n"
             f"Router Redis Caching={self.cache.redis_cache}\n"
-        )  # noqa
+        )
+
         self.routing_strategy_args = routing_strategy_args
         self.retry_policy: Optional[RetryPolicy] = retry_policy
         self.model_group_retry_policy: Optional[Dict[str, RetryPolicy]] = (
@@ -2337,7 +2345,7 @@ class Router:
             original_exception = e
             fallback_model_group = None
             try:
-                verbose_router_logger.debug(f"Trying to fallback b/w models")
+                verbose_router_logger.debug("Trying to fallback b/w models")
                 if (
                     hasattr(e, "status_code")
                     and e.status_code == 400  # type: ignore
@@ -2346,6 +2354,9 @@ class Router:
                         or isinstance(e, litellm.ContentPolicyViolationError)
                     )
                 ):  # don't retry a malformed request
+                    verbose_router_logger.debug(
+                        "Not retrying request as it's malformed. Status code=400."
+                    )
                     raise e
                 if isinstance(e, litellm.ContextWindowExceededError):
                     if context_window_fallbacks is not None:
@@ -2484,6 +2495,12 @@ class Router:
             except Exception as e:
                 verbose_router_logger.error(f"An exception occurred - {str(e)}")
                 verbose_router_logger.debug(traceback.format_exc())
+
+            if hasattr(original_exception, "message"):
+                # add the available fallbacks to the exception
+                original_exception.message += "\nReceived Model Group={}\nAvailable Model Group Fallbacks={}".format(
+                    model_group, fallback_model_group
+                )
             raise original_exception
 
     async def async_function_with_retries(self, *args, **kwargs):
@@ -2920,14 +2937,14 @@ class Router:
                 model_group = kwargs["litellm_params"]["metadata"].get(
                     "model_group", None
                 )
-
-                id = kwargs["litellm_params"].get("model_info", {}).get("id", None)
+                model_info = kwargs["litellm_params"].get("model_info", {}) or {}
+                id = model_info.get("id", None)
                 if model_group is None or id is None:
                     return
                 elif isinstance(id, int):
                     id = str(id)
 
-                total_tokens = completion_response["usage"]["total_tokens"]
+                total_tokens = completion_response["usage"].get("total_tokens", 0)
 
                 # ------------
                 # Setup values
@@ -3452,6 +3469,18 @@ class Router:
             model_info=_model_info,
         )
 
+        ## REGISTER MODEL INFO IN LITELLM MODEL COST MAP
+        _model_name = deployment.litellm_params.model
+        if deployment.litellm_params.custom_llm_provider is not None:
+            _model_name = (
+                deployment.litellm_params.custom_llm_provider + "/" + _model_name
+            )
+        litellm.register_model(
+            model_cost={
+                _model_name: _model_info,
+            }
+        )
+
         deployment = self._add_deployment(deployment=deployment)
 
         model = deployment.to_json(exclude_none=True)
@@ -3539,7 +3568,11 @@ class Router:
         # Check if user is trying to use model_name == "*"
         # this is a catch all model for their specific api key
         if deployment.model_name == "*":
-            self.default_deployment = deployment.to_json(exclude_none=True)
+            if deployment.litellm_params.model == "*":
+                # user wants to pass through all requests to litellm.acompletion for unknown deployments
+                self.router_general_settings.pass_through_all_models = True
+            else:
+                self.default_deployment = deployment.to_json(exclude_none=True)
 
         # Azure GPT-Vision Enhancements, users can pass os.environ/
         data_sources = deployment.litellm_params.get("dataSources", []) or []
@@ -3832,6 +3865,7 @@ class Router:
                     if supported_openai_params is None:
                         supported_openai_params = []
                     model_info = ModelMapInfo(
+                        key=model_group,
                         max_tokens=None,
                         max_input_tokens=None,
                         max_output_tokens=None,
@@ -4471,6 +4505,13 @@ class Router:
                     messages=messages,
                     request_kwargs=request_kwargs,
                 )
+
+            # check if user wants to do tag based routing
+            healthy_deployments = await get_deployments_for_tag(
+                llm_router_instance=self,
+                request_kwargs=request_kwargs,
+                healthy_deployments=healthy_deployments,
+            )
 
             if len(healthy_deployments) == 0:
                 if _allowed_model_region is None:

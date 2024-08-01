@@ -688,6 +688,8 @@ class VertexLLM(BaseLLM):
         try:
             ## CHECK IF GROUNDING METADATA IN REQUEST
             grounding_metadata: List[dict] = []
+            safety_ratings: List = []
+            citation_metadata: List = []
             ## GET TEXT ##
             chat_completion_message = {"role": "assistant"}
             content_str = ""
@@ -699,6 +701,11 @@ class VertexLLM(BaseLLM):
                 if "groundingMetadata" in candidate:
                     grounding_metadata.append(candidate["groundingMetadata"])
 
+                if "safetyRatings" in candidate:
+                    safety_ratings.append(candidate["safetyRatings"])
+
+                if "citationMetadata" in candidate:
+                    citation_metadata.append(candidate["citationMetadata"])
                 if "text" in candidate["content"]["parts"][0]:
                     content_str = candidate["content"]["parts"][0]["text"]
 
@@ -749,6 +756,15 @@ class VertexLLM(BaseLLM):
             model_response._hidden_params["vertex_ai_grounding_metadata"] = (
                 grounding_metadata
             )
+
+            ## ADD SAFETY RATINGS ##
+            model_response._hidden_params["vertex_ai_safety_results"] = safety_ratings
+
+            ## ADD CITATION METADATA ##
+            model_response._hidden_params["vertex_ai_citation_metadata"] = (
+                citation_metadata
+            )
+
         except Exception as e:
             raise VertexAIError(
                 message="Received={}, Error converting to valid response block={}. File an issue if litellm error - https://github.com/BerriAI/litellm/issues".format(
@@ -1033,7 +1049,7 @@ class VertexLLM(BaseLLM):
                 model=model, custom_llm_provider=_custom_llm_provider
             )
         except Exception as e:
-            verbose_logger.error(
+            verbose_logger.warning(
                 "Unable to identify if system message supported. Defaulting to 'False'. Received error message - {}\nAdd it here - https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json".format(
                     str(e)
                 )
@@ -1189,7 +1205,7 @@ class VertexLLM(BaseLLM):
             response.raise_for_status()
         except httpx.HTTPStatusError as err:
             error_code = err.response.status_code
-            raise VertexAIError(status_code=error_code, message=response.text)
+            raise VertexAIError(status_code=error_code, message=err.response.text)
         except httpx.TimeoutException:
             raise VertexAIError(status_code=408, message="Timeout error occurred.")
 

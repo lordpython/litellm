@@ -77,6 +77,7 @@ class OllamaConfig:
     mirostat_tau: Optional[float] = None
     num_ctx: Optional[int] = None
     num_gqa: Optional[int] = None
+    num_gpu: Optional[int] = None
     num_thread: Optional[int] = None
     repeat_last_n: Optional[int] = None
     repeat_penalty: Optional[float] = None
@@ -99,6 +100,7 @@ class OllamaConfig:
         mirostat_tau: Optional[float] = None,
         num_ctx: Optional[int] = None,
         num_gqa: Optional[int] = None,
+        num_gpu: Optional[int] = None,
         num_thread: Optional[int] = None,
         repeat_last_n: Optional[int] = None,
         repeat_penalty: Optional[float] = None,
@@ -256,7 +258,7 @@ def get_ollama_response(
                 logging_obj=logging_obj,
             )
         return response
-    elif stream == True:
+    elif stream is True:
         return ollama_completion_stream(url=url, data=data, logging_obj=logging_obj)
 
     response = requests.post(
@@ -324,7 +326,7 @@ def ollama_completion_stream(url, data, logging_obj):
         try:
             if response.status_code != 200:
                 raise OllamaError(
-                    status_code=response.status_code, message=response.text
+                    status_code=response.status_code, message=response.read()
                 )
 
             streamwrapper = litellm.CustomStreamWrapper(

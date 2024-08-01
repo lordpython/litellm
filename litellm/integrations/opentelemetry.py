@@ -2,11 +2,12 @@ import os
 from dataclasses import dataclass
 from datetime import datetime
 from functools import wraps
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
 import litellm
 from litellm._logging import verbose_logger
 from litellm.integrations.custom_logger import CustomLogger
+from litellm.litellm_core_utils.redact_messages import redact_user_api_key_info
 from litellm.types.services import ServiceLoggerPayload
 
 if TYPE_CHECKING:
@@ -27,9 +28,10 @@ else:
 
 
 LITELLM_TRACER_NAME = os.getenv("OTEL_TRACER_NAME", "litellm")
-LITELLM_RESOURCE = {
+LITELLM_RESOURCE: Dict[Any, Any] = {
     "service.name": os.getenv("OTEL_SERVICE_NAME", "litellm"),
     "deployment.environment": os.getenv("OTEL_ENVIRONMENT_NAME", "production"),
+    "model_id": os.getenv("OTEL_SERVICE_NAME", "litellm"),
 }
 RAW_REQUEST_SPAN_NAME = "raw_gen_ai_request"
 LITELLM_REQUEST_SPAN_NAME = "litellm_request"
@@ -68,7 +70,9 @@ class OpenTelemetryConfig:
 
 
 class OpenTelemetry(CustomLogger):
-    def __init__(self, config=OpenTelemetryConfig.from_env()):
+    def __init__(
+        self, config=OpenTelemetryConfig.from_env(), callback_name: Optional[str] = None
+    ):
         from opentelemetry import trace
         from opentelemetry.sdk.resources import Resource
         from opentelemetry.sdk.trace import TracerProvider
@@ -79,6 +83,7 @@ class OpenTelemetry(CustomLogger):
         self.OTEL_HEADERS = self.config.headers
         provider = TracerProvider(resource=Resource(attributes=LITELLM_RESOURCE))
         provider.add_span_processor(self._get_span_processor())
+        self.callback_name = callback_name
 
         trace.set_tracer_provider(provider)
         self.tracer = trace.get_tracer(LITELLM_TRACER_NAME)
@@ -114,14 +119,15 @@ class OpenTelemetry(CustomLogger):
         parent_otel_span: Optional[Span] = None,
         start_time: Optional[Union[datetime, float]] = None,
         end_time: Optional[Union[datetime, float]] = None,
+        event_metadata: Optional[dict] = None,
     ):
         from datetime import datetime
 
         from opentelemetry import trace
         from opentelemetry.trace import Status, StatusCode
 
-        _start_time_ns = start_time
-        _end_time_ns = end_time
+        _start_time_ns = 0
+        _end_time_ns = 0
 
         if isinstance(start_time, float):
             _start_time_ns = int(int(start_time) * 1e9)
@@ -144,6 +150,10 @@ class OpenTelemetry(CustomLogger):
             service_logging_span.set_attribute(
                 key="service", value=payload.service.value
             )
+
+            if event_metadata:
+                for key, value in event_metadata.items():
+                    service_logging_span.set_attribute(key, value)
             service_logging_span.set_status(Status(StatusCode.OK))
             service_logging_span.end(end_time=_end_time_ns)
 
@@ -159,8 +169,8 @@ class OpenTelemetry(CustomLogger):
         from opentelemetry import trace
         from opentelemetry.trace import Status, StatusCode
 
-        _start_time_ns = start_time
-        _end_time_ns = end_time
+        _start_time_ns = 0
+        _end_time_ns = 0
 
         if isinstance(start_time, float):
             _start_time_ns = int(int(start_time) * 1e9)
@@ -294,6 +304,11 @@ class OpenTelemetry(CustomLogger):
         return isinstance(value, (str, bool, int, float))
 
     def set_attributes(self, span: Span, kwargs, response_obj):
+        if self.callback_name == "arize":
+            from litellm.integrations.arize_ai import set_arize_ai_attributes
+
+            set_arize_ai_attributes(span, kwargs, response_obj)
+            return
         from litellm.proxy._types import SpanAttributes
 
         optional_params = kwargs.get("optional_params", {})
@@ -306,7 +321,9 @@ class OpenTelemetry(CustomLogger):
         #############################################
         metadata = litellm_params.get("metadata", {}) or {}
 
-        for key, value in metadata.items():
+        clean_metadata = redact_user_api_key_info(metadata=metadata)
+
+        for key, value in clean_metadata.items():
             if self.is_primitive(value):
                 span.set_attribute("metadata.{}".format(key), value)
 
@@ -451,7 +468,7 @@ class OpenTelemetry(CustomLogger):
         #############################################
 
         # OTEL Attributes for the RAW Request to https://docs.anthropic.com/en/api/messages
-        if complete_input_dict:
+        if complete_input_dict and isinstance(complete_input_dict, dict):
             for param, val in complete_input_dict.items():
                 if not isinstance(val, str):
                     val = str(val)
@@ -612,8 +629,8 @@ class OpenTelemetry(CustomLogger):
         from opentelemetry import trace
         from opentelemetry.trace import Status, StatusCode
 
-        _start_time_ns = logging_payload.start_time
-        _end_time_ns = logging_payload.end_time
+        _start_time_ns = 0
+        _end_time_ns = 0
 
         start_time = logging_payload.start_time
         end_time = logging_payload.end_time
@@ -658,8 +675,8 @@ class OpenTelemetry(CustomLogger):
         from opentelemetry import trace
         from opentelemetry.trace import Status, StatusCode
 
-        _start_time_ns = logging_payload.start_time
-        _end_time_ns = logging_payload.end_time
+        _start_time_ns = 0
+        _end_time_ns = 0
 
         start_time = logging_payload.start_time
         end_time = logging_payload.end_time

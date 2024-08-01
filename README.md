@@ -8,7 +8,7 @@
           <img src="https://railway.app/button.svg" alt="Deploy on Railway">
         </a>
         </p>
-        <p align="center">Call all LLM APIs using the OpenAI format [Bedrock, Huggingface, VertexAI, TogetherAI, Azure, OpenAI, etc.]
+        <p align="center">Call all LLM APIs using the OpenAI format [Bedrock, Huggingface, VertexAI, TogetherAI, Azure, OpenAI, Groq etc.]
         <br>
     </p>
 <h4 align="center"><a href="https://docs.litellm.ai/docs/simple_proxy" target="_blank">OpenAI Proxy Server</a> | <a href="https://docs.litellm.ai/docs/hosted" target="_blank"> Hosted Proxy (Preview)</a> | <a href="https://docs.litellm.ai/docs/enterprise"target="_blank">Enterprise Tier</a></h4>
@@ -166,6 +166,10 @@ $ litellm --model huggingface/bigcode/starcoder
 
 ### Step 2: Make ChatCompletions Request to Proxy
 
+
+> [!IMPORTANT]
+> 💡 [Use LiteLLM Proxy with Langchain (Python, JS), OpenAI SDK (Python, JS) Anthropic SDK, Mistral SDK, LlamaIndex, Instructor, Curl](https://docs.litellm.ai/docs/proxy/user_keys)  
+
 ```python
 import openai # openai v1.0.0+
 client = openai.OpenAI(api_key="anything",base_url="http://0.0.0.0:4000") # set proxy to base_url
@@ -191,8 +195,15 @@ git clone https://github.com/BerriAI/litellm
 # Go to folder
 cd litellm
 
-# Add the master key
+# Add the master key - you can change this after setup
 echo 'LITELLM_MASTER_KEY="sk-1234"' > .env
+
+# Add the litellm salt key - you cannot change this after adding a model
+# It is used to encrypt / decrypt your LLM API Key credentials
+# We recommned - https://1password.com/password-generator/ 
+# password generator to get a random hash for litellm salt key
+echo 'LITELLM_SALT_KEY="sk-1234"' > .env
+
 source .env
 
 # Start

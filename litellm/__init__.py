@@ -4,7 +4,7 @@ import warnings
 warnings.filterwarnings("ignore", message=".*conflict with protected namespace.*")
 ### INIT VARIABLES ###
 import threading, requests, os
-from typing import Callable, List, Optional, Dict, Union, Any, Literal
+from typing import Callable, List, Optional, Dict, Union, Any, Literal, get_args
 from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler, HTTPHandler
 from litellm.caching import Cache
 from litellm._logging import (
@@ -38,8 +38,18 @@ success_callback: List[Union[str, Callable]] = []
 failure_callback: List[Union[str, Callable]] = []
 service_callback: List[Union[str, Callable]] = []
 _custom_logger_compatible_callbacks_literal = Literal[
-    "lago", "openmeter", "logfire", "dynamic_rate_limiter", "langsmith", "galileo"
+    "lago",
+    "openmeter",
+    "logfire",
+    "dynamic_rate_limiter",
+    "langsmith",
+    "galileo",
+    "braintrust",
+    "arize",
 ]
+_known_custom_logger_compatible_callbacks: List = list(
+    get_args(_custom_logger_compatible_callbacks_literal)
+)
 callbacks: List[Union[Callable, _custom_logger_compatible_callbacks_literal]] = []
 _langfuse_default_tags: Optional[
     List[
@@ -67,6 +77,7 @@ post_call_rules: List[Callable] = []
 turn_off_message_logging: Optional[bool] = False
 log_raw_request_response: bool = False
 redact_messages_in_exceptions: Optional[bool] = False
+redact_user_api_key_info: Optional[bool] = False
 store_audit_logs = False  # Enterprise feature, allow users to see audit logs
 ## end of callbacks #############
 
@@ -346,6 +357,8 @@ vertex_text_models: List = []
 vertex_code_text_models: List = []
 vertex_embedding_models: List = []
 vertex_anthropic_models: List = []
+vertex_llama3_models: List = []
+vertex_mistral_models: List = []
 ai21_models: List = []
 nlp_cloud_models: List = []
 aleph_alpha_models: List = []
@@ -388,6 +401,12 @@ for key, value in model_cost.items():
     elif value.get("litellm_provider") == "vertex_ai-anthropic_models":
         key = key.replace("vertex_ai/", "")
         vertex_anthropic_models.append(key)
+    elif value.get("litellm_provider") == "vertex_ai-llama_models":
+        key = key.replace("vertex_ai/", "")
+        vertex_llama3_models.append(key)
+    elif value.get("litellm_provider") == "vertex_ai-mistral_models":
+        key = key.replace("vertex_ai/", "")
+        vertex_mistral_models.append(key)
     elif value.get("litellm_provider") == "ai21":
         ai21_models.append(key)
     elif value.get("litellm_provider") == "nlp_cloud":
@@ -798,6 +817,7 @@ from .utils import (
 )
 
 from .types.utils import ImageObject
+from .llms.custom_llm import CustomLLM
 from .llms.huggingface_restapi import HuggingfaceConfig
 from .llms.anthropic import AnthropicConfig
 from .llms.databricks import DatabricksConfig, DatabricksEmbeddingConfig
@@ -817,6 +837,7 @@ from .llms.petals import PetalsConfig
 from .llms.vertex_httpx import VertexGeminiConfig, GoogleAIStudioGeminiConfig
 from .llms.vertex_ai import VertexAIConfig, VertexAITextEmbeddingConfig
 from .llms.vertex_ai_anthropic import VertexAIAnthropicConfig
+from .llms.vertex_ai_partner import VertexAILlama3Config
 from .llms.sagemaker import SagemakerConfig
 from .llms.ollama import OllamaConfig
 from .llms.ollama_chat import OllamaChatConfig
@@ -872,6 +893,7 @@ from .exceptions import (
     APIError,
     Timeout,
     APIConnectionError,
+    UnsupportedParamsError,
     APIResponseValidationError,
     UnprocessableEntityError,
     InternalServerError,
@@ -884,6 +906,7 @@ from .proxy.proxy_cli import run_server
 from .router import Router
 from .assistants.main import *
 from .batches.main import *
+from .fine_tuning.main import *
 from .files.main import *
 from .scheduler import *
 from .cost_calculator import response_cost_calculator, cost_per_token
@@ -892,3 +915,12 @@ from .cost_calculator import response_cost_calculator, cost_per_token
 from .types.adapter import AdapterItem
 
 adapters: List[AdapterItem] = []
+
+### CUSTOM LLMs ###
+from .types.llms.custom_llm import CustomLLMItem
+from .types.utils import GenericStreamingChunk
+
+custom_provider_map: List[CustomLLMItem] = []
+_custom_providers: List[str] = (
+    []
+)  # internal helper util, used to track names of custom providers

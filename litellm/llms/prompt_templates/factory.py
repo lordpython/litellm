@@ -6,7 +6,6 @@ import xml.etree.ElementTree as ET
 from enum import Enum
 from typing import Any, List, Mapping, MutableMapping, Optional, Sequence, Tuple
 
-import requests
 from jinja2 import BaseLoader, Template, exceptions, meta
 from jinja2.sandbox import ImmutableSandboxedEnvironment
 
@@ -14,6 +13,7 @@ import litellm
 import litellm.types
 import litellm.types.llms
 import litellm.types.llms.vertex_ai
+from litellm.llms.custom_httpx.http_handler import HTTPHandler
 from litellm.types.completion import (
     ChatCompletionFunctionMessageParam,
     ChatCompletionMessageParam,
@@ -235,6 +235,12 @@ def mistral_api_pt(messages):
     """
     new_messages = []
     for m in messages:
+        special_keys = ["role", "content", "tool_calls", "function_call"]
+        extra_args = {}
+        if isinstance(m, dict):
+            for k, v in m.items():
+                if k not in special_keys:
+                    extra_args[k] = v
         texts = ""
         if isinstance(m["content"], list):
             for c in m["content"]:
@@ -244,7 +250,8 @@ def mistral_api_pt(messages):
                     texts += c["text"]
         elif isinstance(m["content"], str):
             texts = m["content"]
-        new_m = {"role": m["role"], "content": texts}
+
+        new_m = {"role": m["role"], "content": texts, **extra_args}
 
         if new_m["role"] == "tool" and m.get("name"):
             new_m["name"] = m["name"]
@@ -364,7 +371,8 @@ def hf_chat_template(model: str, messages: list, chat_template: Optional[Any] = 
                 f"https://huggingface.co/{hf_model_name}/raw/main/tokenizer_config.json"
             )
             # Make a GET request to fetch the JSON data
-            response = requests.get(url)
+            client = HTTPHandler(concurrent_limit=1)
+            response = client.get(url)
             if response.status_code == 200:
                 # Parse the JSON data
                 tokenizer_config = json.loads(response.content)
@@ -494,7 +502,8 @@ def claude_2_1_pt(
 def get_model_info(token, model):
     try:
         headers = {"Authorization": f"Bearer {token}"}
-        response = requests.get("https://api.together.xyz/models/info", headers=headers)
+        client = HTTPHandler(concurrent_limit=1)
+        response = client.get("https://api.together.xyz/models/info", headers=headers)
         if response.status_code == 200:
             model_info = response.json()
             for m in model_info:
@@ -657,11 +666,11 @@ def construct_tool_use_system_prompt(
 def convert_url_to_base64(url):
     import base64
 
-    import requests
-
+    client = HTTPHandler(concurrent_limit=1)
     for _ in range(3):
         try:
-            response = requests.get(url)
+
+            response = client.get(url)
             break
         except:
             pass
@@ -709,6 +718,7 @@ def convert_to_anthropic_image_obj(openai_image_url: str) -> GenericImageParsing
             openai_image_url = convert_url_to_base64(url=openai_image_url)
         # Extract the media type and base64 data
         media_type, base64_data = openai_image_url.split("data:")[1].split(";base64,")
+        media_type = media_type.replace("\\/", "/")
 
         return GenericImageParsingChunk(
             type="base64",
@@ -1622,6 +1632,7 @@ def cohere_messages_pt_v2(
     Note:
     - cannot specify message if the last entry in chat history contains tool results
     - message must be at least 1 token long or tool results must be specified.
+    - cannot specify tool_results if the last entry in chat history contains a user message
     """
     tool_calls: List = get_all_tool_calls(messages=messages)
 
@@ -1797,7 +1808,8 @@ def _load_image_from_url(image_url):
 
     try:
         # Send a GET request to the image URL
-        response = requests.get(image_url)
+        client = HTTPHandler(concurrent_limit=1)
+        response = client.get(image_url)
         response.raise_for_status()  # Raise an exception for HTTP errors
 
         # Check the response's content type to ensure it is an image
@@ -1810,8 +1822,6 @@ def _load_image_from_url(image_url):
         # Load the image from the response content
         return Image.open(BytesIO(response.content))
 
-    except requests.RequestException as e:
-        raise Exception(f"Request failed: {e}")
     except Exception as e:
         raise e
 
@@ -1988,8 +1998,9 @@ def get_image_details(image_url) -> Tuple[str, str]:
     try:
         import base64
 
+        client = HTTPHandler(concurrent_limit=1)
         # Send a GET request to the image URL
-        response = requests.get(image_url)
+        response = client.get(image_url)
         response.raise_for_status()  # Raise an exception for HTTP errors
 
         # Check the response's content type to ensure it is an image
@@ -2009,8 +2020,6 @@ def get_image_details(image_url) -> Tuple[str, str]:
 
         return base64_bytes, mime_type
 
-    except requests.RequestException as e:
-        raise Exception(f"Request failed: {e}")
     except Exception as e:
         raise e
 
